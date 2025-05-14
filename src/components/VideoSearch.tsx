@@ -1,11 +1,12 @@
 import React, { useState } from "react";
-import { Search, Plus } from "lucide-react";
+import { Search, Plus, Link, Disc } from "lucide-react";
 import useRoomStore from "../store/roomStore";
 
 interface VideoSearchResult {
   id: string;
   title: string;
   thumbnail: string;
+  channelTitle?: string; // Add channel name for better user experience
 }
 
 const VideoSearch: React.FC = () => {
@@ -14,6 +15,9 @@ const VideoSearch: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { addVideo } = useRoomStore();
+  const [isUrlMode, setIsUrlMode] = useState(false); // Track whether we're in URL or search mode
+
+  const apiKey = import.meta.env.VITE_YOUTUBE_API_KEY;
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,12 +33,13 @@ const VideoSearch: React.FC = () => {
       const urlMatch = searchQuery.match(urlRegex);
 
       if (urlMatch && urlMatch[1]) {
+        // URL mode for single video
+        setIsUrlMode(true);
+
         // Get video details for the single video
         const videoId = urlMatch[1];
         const response = await fetch(
-          `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoId}&key=${
-            import.meta.env.VITE_YOUTUBE_API_KEY
-          }`
+          `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoId}&key=${apiKey}`
         );
         const data = await response.json();
 
@@ -45,6 +50,7 @@ const VideoSearch: React.FC = () => {
               id: video.id,
               title: video.snippet.title,
               thumbnail: video.snippet.thumbnails.medium.url,
+              channelTitle: video.snippet.channelTitle || "",
             },
           ]);
         } else {
@@ -52,26 +58,40 @@ const VideoSearch: React.FC = () => {
           setSearchResults([]);
         }
       } else {
-        // Perform a search query
+        // Search mode for multiple videos
+        setIsUrlMode(false);
+
+        // Perform a search query with 20 results
         const response = await fetch(
-          `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=5&q=${encodeURIComponent(
+          `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=20&q=${encodeURIComponent(
             searchQuery
-          )}&type=video&key=AIzaSyDh_KnD20yfV4Zmq7l89WFQuaeMUQnWaXg`
+          )}&type=video&key=${apiKey}`
         );
         const data = await response.json();
 
-        if (data.items) {
+        if (data.error) {
+          console.error("YouTube API error:", data.error);
+          setError(
+            `Error: ${data.error.message || "Failed to search YouTube"}`
+          );
+          setSearchResults([]);
+          return;
+        }
+
+        if (data.items && data.items.length > 0) {
           const results = data.items.map(
             (item: {
               id: { videoId: string };
               snippet: {
                 title: string;
+                channelTitle?: string;
                 thumbnails: { medium: { url: string } };
               };
             }) => ({
               id: item.id.videoId,
               title: item.snippet.title,
-              thumbnail: item.snippet.thumbnails.medium.url,
+              thumbnail: item.snippet.thumbnails.medium.url || "",
+              channelTitle: item.snippet.channelTitle || "",
             })
           );
           setSearchResults(results);
@@ -102,10 +122,9 @@ const VideoSearch: React.FC = () => {
 
       <form onSubmit={handleSearch} className="flex gap-2 mb-4">
         <div className="relative flex-1">
-          <Search
-            className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
-            size={18}
-          />
+          <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+            {isUrlMode ? <Link size={18} /> : <Search size={18} />}
+          </div>
           <input
             type="text"
             value={searchQuery}
@@ -128,24 +147,31 @@ const VideoSearch: React.FC = () => {
       {searchResults.length > 0 && (
         <div className="search-results">
           <h4 className="text-sm font-medium text-gray-300 mb-2">
-            Search Results
+            Search Results{" "}
+            {searchResults.length > 1 && `(${searchResults.length})`}
           </h4>
-          <ul className="space-y-2 max-h-[300px] overflow-y-auto">
+          <ul className="space-y-2 max-h-[400px] overflow-y-auto pr-2 scrollbar-thin">
             {searchResults.map((video) => (
               <li
                 key={video.id}
-                className="bg-gray-800 rounded-lg overflow-hidden"
+                className="bg-gray-800 rounded-lg overflow-hidden hover:bg-gray-700 transition-colors"
               >
                 <div className="flex items-start p-2">
                   <img
                     src={video.thumbnail}
                     alt={video.title}
-                    className="w-20 h-auto rounded object-cover mr-3"
+                    className="w-24 h-auto rounded object-cover mr-3"
                   />
                   <div className="flex-1 overflow-hidden">
-                    <h5 className="text-sm text-white truncate font-medium">
+                    <h5 className="text-sm text-white font-medium line-clamp-2">
                       {video.title}
                     </h5>
+                    {video.channelTitle && (
+                      <div className="flex items-center mt-1 text-xs text-gray-400">
+                        <Disc size={12} className="mr-1" />
+                        {video.channelTitle}
+                      </div>
+                    )}
                   </div>
                   <button
                     onClick={() => handleAddVideo(video)}
