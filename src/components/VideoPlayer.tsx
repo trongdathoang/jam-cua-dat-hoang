@@ -7,8 +7,15 @@ import {
   Volume2,
   VolumeX,
   Trash2,
+  Headphones,
 } from "lucide-react";
 import useRoomStore from "../store/roomStore";
+import {
+  registerServiceWorker,
+  playBackgroundAudio,
+  pauseBackgroundAudio,
+  setupServiceWorkerListeners,
+} from "../firebase/serviceWorker";
 
 const VideoPlayer: React.FC = () => {
   const {
@@ -30,11 +37,120 @@ const VideoPlayer: React.FC = () => {
   const lastSyncTimeRef = useRef<number>(0);
   const isSeeking = useRef(false);
   const isDraggingSeekBar = useRef(false);
+  const [isBackgroundMode, setIsBackgroundMode] = useState(false);
+  const [serviceWorkerRegistered, setServiceWorkerRegistered] = useState(false);
+  const [serviceWorkerAvailable, setServiceWorkerAvailable] = useState(true);
+  const [playerReady, setPlayerReady] = useState(false);
+  const initializedRef = useRef(false);
+  const swRegistrationAttemptedRef = useRef(false);
 
   const currentVideo = room?.currentVideo;
   const isPlaying = room?.isPlaying || false;
   const currentTime = room?.currentTime || 0;
   const isHost = user?.isHost || false;
+
+  // Check if service worker is available and not failed previously
+  useEffect(() => {
+    const swFailed = localStorage.getItem("sw-failed") === "true";
+    if (swFailed) {
+      setServiceWorkerAvailable(false);
+      console.warn("Service worker disabled due to previous failures");
+    } else {
+      setServiceWorkerAvailable("serviceWorker" in navigator);
+    }
+  }, []);
+
+  // Register service worker on component mount, but only if not attempted before
+  useEffect(() => {
+    if (!serviceWorkerAvailable || swRegistrationAttemptedRef.current) return;
+
+    swRegistrationAttemptedRef.current = true;
+
+    const registerSW = async () => {
+      try {
+        const registration = await registerServiceWorker();
+        setServiceWorkerRegistered(registration !== null);
+        initializedRef.current = false; // Reset initialization flag on registration
+      } catch (error) {
+        console.error("Failed to register service worker:", error);
+        setServiceWorkerRegistered(false);
+        setServiceWorkerAvailable(false);
+        localStorage.setItem("sw-failed", "true");
+      }
+    };
+
+    // Add a timeout to prevent hanging
+    const timeout = setTimeout(() => {
+      console.warn("Service worker registration timed out");
+      setServiceWorkerRegistered(false);
+      setServiceWorkerAvailable(false);
+      localStorage.setItem("sw-failed", "true");
+    }, 3000);
+
+    registerSW().finally(() => {
+      clearTimeout(timeout);
+    });
+  }, [serviceWorkerAvailable]);
+
+  // Setup service worker listeners
+  useEffect(() => {
+    if (!serviceWorkerRegistered) return;
+
+    let cleanup: (() => void) | undefined;
+
+    try {
+      cleanup = setupServiceWorkerListeners({
+        onPlay: (videoId) => {
+          if (!initializedRef.current && !currentVideo) {
+            // Ignore initial status updates when there's no video
+            return;
+          }
+          console.log("Service worker confirmed playing:", videoId);
+          initializedRef.current = true;
+        },
+        onPause: () => {
+          if (!initializedRef.current && !currentVideo) {
+            // Ignore initial status updates when there's no video
+            return;
+          }
+          console.log("Service worker confirmed pause");
+          initializedRef.current = true;
+          if (isHost && isPlaying) {
+            // Only pause if we're actually playing
+            pauseVideo();
+          }
+        },
+        onSkip: () => {
+          if (!initializedRef.current) {
+            // Ignore initial status updates
+            return;
+          }
+          console.log("Service worker requesting skip");
+          if (isHost) {
+            skipVideo();
+          }
+        },
+        onError: (error) => {
+          console.error("Service worker audio error:", error);
+        },
+      });
+    } catch (error) {
+      console.error("Failed to setup service worker listeners:", error);
+      setServiceWorkerRegistered(false);
+      setServiceWorkerAvailable(false);
+    }
+
+    return () => {
+      if (cleanup) cleanup();
+    };
+  }, [
+    serviceWorkerRegistered,
+    isHost,
+    skipVideo,
+    pauseVideo,
+    currentVideo,
+    isPlaying,
+  ]);
 
   // Clean up intervals on unmount
   useEffect(() => {
@@ -48,9 +164,45 @@ const VideoPlayer: React.FC = () => {
     };
   }, []);
 
+  // Set initialized flag when a video is playing
+  useEffect(() => {
+    if (currentVideo && isPlaying) {
+      initializedRef.current = true;
+    }
+  }, [currentVideo, isPlaying]);
+
+  // Reset player ready state when video changes or background mode toggles
+  useEffect(() => {
+    if (isBackgroundMode) {
+      // When entering background mode, we don't need the player
+      setPlayerReady(false);
+    }
+  }, [currentVideo?.id, isBackgroundMode]);
+
   // Handle play/pause state changes
   useEffect(() => {
-    if (!playerRef.current) return;
+    if (isBackgroundMode) {
+      // In background mode, notify service worker of play/pause
+      if (isPlaying && currentVideo && serviceWorkerRegistered) {
+        try {
+          playBackgroundAudio(currentVideo.id);
+        } catch (error) {
+          console.error("Failed to play background audio:", error);
+          setIsBackgroundMode(false);
+        }
+      } else if (currentVideo && serviceWorkerRegistered) {
+        // Only send pause if we have a video to pause
+        try {
+          pauseBackgroundAudio();
+        } catch (error) {
+          console.error("Failed to pause background audio:", error);
+        }
+      }
+      return;
+    }
+
+    // Only interact with the player if it's ready
+    if (!playerRef.current || !playerReady) return;
 
     try {
       if (isPlaying && playerRef.current.getPlayerState() !== 1) {
@@ -61,11 +213,23 @@ const VideoPlayer: React.FC = () => {
     } catch (error) {
       console.error("Error controlling player:", error);
     }
-  }, [isPlaying]);
+  }, [
+    isPlaying,
+    currentVideo,
+    isBackgroundMode,
+    playerReady,
+    serviceWorkerRegistered,
+  ]);
 
   // Handle seeking - more responsive to remote time changes
   useEffect(() => {
-    if (!playerRef.current || isSeeking.current || isDraggingSeekBar.current)
+    if (isBackgroundMode) return; // Skip seeking in background mode
+    if (
+      !playerRef.current ||
+      !playerReady ||
+      isSeeking.current ||
+      isDraggingSeekBar.current
+    )
       return;
 
     // Don't sync if we've just synced recently (avoid feedback loops)
@@ -85,11 +249,13 @@ const VideoPlayer: React.FC = () => {
     } catch (error) {
       console.error("Error syncing time:", error);
     }
-  }, [currentTime]);
+  }, [currentTime, isBackgroundMode, playerReady]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handlePlayerReady = (event: any) => {
     playerRef.current = event.target;
+    setPlayerReady(true);
+    console.log("YouTube player ready");
 
     // Set up more frequent sync interval for hosts
     if (syncIntervalRef.current) {
@@ -99,9 +265,11 @@ const VideoPlayer: React.FC = () => {
     syncIntervalRef.current = window.setInterval(() => {
       if (
         !playerRef.current ||
+        !playerReady ||
         !isHost ||
         isSeeking.current ||
-        isDraggingSeekBar.current
+        isDraggingSeekBar.current ||
+        isBackgroundMode
       )
         return;
 
@@ -123,7 +291,13 @@ const VideoPlayer: React.FC = () => {
     }
 
     updateTimeIntervalRef.current = window.setInterval(() => {
-      if (!playerRef.current || isDraggingSeekBar.current) return;
+      if (
+        !playerRef.current ||
+        !playerReady ||
+        isDraggingSeekBar.current ||
+        isBackgroundMode
+      )
+        return;
 
       try {
         const currentPlayerTime = playerRef.current.getCurrentTime();
@@ -151,6 +325,16 @@ const VideoPlayer: React.FC = () => {
       pauseVideo();
     } else if (playerState === 0) {
       // Video ended, auto play next
+      // Also notify service worker if in background mode
+      if (serviceWorkerRegistered && navigator.serviceWorker.controller) {
+        try {
+          navigator.serviceWorker.controller.postMessage({
+            type: "VIDEO_ENDED",
+          });
+        } catch (error) {
+          console.error("Failed to notify service worker of video end:", error);
+        }
+      }
       skipVideo();
     }
   };
@@ -163,7 +347,7 @@ const VideoPlayer: React.FC = () => {
   };
 
   const handleSeekCommit = () => {
-    if (playerRef.current) {
+    if (playerRef.current && playerReady && !isBackgroundMode) {
       const newTime = localTime;
       playerRef.current.seekTo(newTime);
 
@@ -189,6 +373,11 @@ const VideoPlayer: React.FC = () => {
   };
 
   const toggleMute = () => {
+    if (isBackgroundMode || !playerReady) {
+      // In background mode, we can't control mute directly
+      return;
+    }
+
     if (playerRef.current) {
       if (isMuted) {
         playerRef.current.unMute();
@@ -199,6 +388,32 @@ const VideoPlayer: React.FC = () => {
     }
   };
 
+  const toggleBackgroundMode = () => {
+    if (!serviceWorkerRegistered || !serviceWorkerAvailable) {
+      console.warn(
+        "Service worker not registered, background mode unavailable"
+      );
+      return;
+    }
+
+    // Toggle background mode
+    const newBackgroundMode = !isBackgroundMode;
+    setIsBackgroundMode(newBackgroundMode);
+
+    // When entering background mode
+    if (newBackgroundMode) {
+      // If we have a video playing, tell service worker to track state
+      if (isPlaying && currentVideo) {
+        try {
+          playBackgroundAudio(currentVideo.id);
+        } catch (error) {
+          console.error("Failed to activate background mode:", error);
+          setIsBackgroundMode(false);
+        }
+      }
+    }
+  };
+
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
@@ -206,7 +421,9 @@ const VideoPlayer: React.FC = () => {
   };
 
   const getDuration = (): number => {
-    return playerRef.current ? playerRef.current.getDuration() : 0;
+    return playerRef.current && playerReady && !isBackgroundMode
+      ? playerRef.current.getDuration()
+      : 0;
   };
 
   if (!currentVideo) {
@@ -225,28 +442,54 @@ const VideoPlayer: React.FC = () => {
   return (
     <div className="video-player w-full flex flex-col">
       <div className="player-container aspect-video bg-black rounded-lg overflow-hidden relative">
-        <YouTube
-          videoId={currentVideo.id}
-          opts={{
-            width: "100%",
-            height: "100%",
-            playerVars: {
-              autoplay: 1,
-              modestbranding: 1,
-              controls: 0, // Hide YouTube controls
-              rel: 0,
-              fs: 0,
-              origin: window.location.origin,
-              playsinline: 1,
-              enablejsapi: 1,
-            },
-          }}
-          onReady={handlePlayerReady}
-          onStateChange={handleStateChange}
-          className="absolute inset-0"
-        />
+        {!isBackgroundMode && (
+          <YouTube
+            videoId={currentVideo.id}
+            opts={{
+              width: "100%",
+              height: "100%",
+              playerVars: {
+                autoplay: 1,
+                modestbranding: 1,
+                controls: 0, // Hide YouTube controls
+                rel: 0,
+                fs: 0,
+                origin: window.location.origin,
+                playsinline: 1,
+                enablejsapi: 1,
+              },
+            }}
+            onReady={handlePlayerReady}
+            onStateChange={handleStateChange}
+            className="absolute inset-0"
+          />
+        )}
 
-        {isBuffering && (
+        {isBackgroundMode && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-800">
+            <div className="mb-4">
+              <Headphones size={64} className="text-purple-500" />
+            </div>
+            <h3 className="text-xl font-medium text-white mb-2">
+              Background Mode
+            </h3>
+            <p className="text-gray-300 text-center max-w-md mb-4">
+              Audio is playing in the background. You can lock your screen or
+              use other apps while listening.
+            </p>
+            <div className="text-sm text-gray-400 mb-4">
+              Now playing: {currentVideo.title}
+            </div>
+            <button
+              onClick={toggleBackgroundMode}
+              className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
+            >
+              Return to Video
+            </button>
+          </div>
+        )}
+
+        {isBuffering && !isBackgroundMode && (
           <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
             <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-white"></div>
           </div>
@@ -307,7 +550,7 @@ const VideoPlayer: React.FC = () => {
               onTouchStart={handleSeekMouseDown}
               onTouchEnd={handleSeekMouseUp}
               className="w-full slider-progress h-1.5 appearance-none bg-gray-700 rounded-full flex-1 cursor-pointer"
-              disabled={!isHost}
+              disabled={!isHost || isBackgroundMode}
             />
             <span className="text-xs text-gray-400 ml-2 w-12">
               {formatTime(getDuration())}
@@ -316,10 +559,24 @@ const VideoPlayer: React.FC = () => {
 
           <button
             onClick={toggleMute}
-            className="p-2 text-white ml-2 hover:bg-gray-800 rounded-full transition-colors"
+            className="p-2 text-white mx-2 hover:bg-gray-800 rounded-full transition-colors"
+            disabled={isBackgroundMode}
           >
             {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
           </button>
+
+          {serviceWorkerRegistered && serviceWorkerAvailable && (
+            <button
+              onClick={toggleBackgroundMode}
+              className="p-2 text-white ml-2 hover:bg-gray-800 rounded-full transition-colors"
+              title="Toggle background audio mode"
+            >
+              <Headphones
+                size={20}
+                className={isBackgroundMode ? "text-purple-500" : ""}
+              />
+            </button>
+          )}
         </div>
 
         <div className="video-info">
