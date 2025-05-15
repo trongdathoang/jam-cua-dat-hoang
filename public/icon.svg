@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Purple circular background -->
+  <circle cx="50" cy="50" r="45" fill="#9B4DCA" />
+
+  <!-- Film strip shape -->
+  <rect x="25" y="28" width="50" height="44" rx="3" ry="3" fill="white" />
+
+  <!-- Film sprocket holes and dividers -->
+  <rect x="25" y="28" width="10" height="10" fill="#9B4DCA" />
+  <rect x="65" y="28" width="10" height="10" fill="#9B4DCA" />
+  <rect x="25" y="45" width="10" height="10" fill="#9B4DCA" />
+  <rect x="65" y="45" width="10" height="10" fill="#9B4DCA" />
+  <rect x="25" y="62" width="10" height="10" fill="#9B4DCA" />
+  <rect x="65" y="62" width="10" height="10" fill="#9B4DCA" />
+
+  <!-- Horizontal dividing lines -->
+  <rect x="25" y="42" width="50" height="1" fill="#9B4DCA" />
+  <rect x="25" y="59" width="50" height="1" fill="#9B4DCA" />
+</svg>
