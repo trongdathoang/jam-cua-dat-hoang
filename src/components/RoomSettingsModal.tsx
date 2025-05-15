@@ -37,6 +37,41 @@ const RoomSettingsModal: React.FC<RoomSettingsModalProps> = ({
     onClose();
   };
 
+  // Toggle switch component for better reusability and consistency
+  const ToggleSwitch = ({
+    id,
+    label,
+    checked,
+    onChange,
+  }: {
+    id: string;
+    label: string;
+    checked: boolean;
+    onChange: () => void;
+  }) => (
+    <div className="flex items-center justify-between">
+      <label htmlFor={id} className="text-white cursor-pointer">
+        {label}
+      </label>
+      <div
+        className="relative inline-block w-12 h-6 cursor-pointer"
+        onClick={onChange}
+      >
+        <div
+          className={`absolute inset-0 rounded-full transition-colors duration-200 ${
+            checked ? "bg-purple-600" : "bg-gray-600"
+          }`}
+        >
+          <div
+            className={`absolute bg-white h-5 w-5 rounded-full top-0.5 left-0.5 transition-transform duration-200 ${
+              checked ? "translate-x-6" : ""
+            }`}
+          />
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md">
@@ -63,111 +98,33 @@ const RoomSettingsModal: React.FC<RoomSettingsModalProps> = ({
           </p>
 
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <label htmlFor="play-pause" className="text-white">
-                Play & Pause Videos
-              </label>
-              <div className="relative inline-block w-12 h-6">
-                <input
-                  id="play-pause"
-                  type="checkbox"
-                  className="opacity-0 w-0 h-0"
-                  checked={settings.allowAllPlayPause}
-                  onChange={() => handleChange("allowAllPlayPause")}
-                />
-                <span
-                  className={`absolute cursor-pointer inset-0 rounded-full transition-colors duration-200 ${
-                    settings.allowAllPlayPause ? "bg-purple-600" : "bg-gray-600"
-                  }`}
-                >
-                  <span
-                    className={`absolute bg-white h-5 w-5 rounded-full top-0.5 left-0.5 transition-transform duration-200 ${
-                      settings.allowAllPlayPause ? "translate-x-6" : ""
-                    }`}
-                  />
-                </span>
-              </div>
-            </div>
+            <ToggleSwitch
+              id="play-pause"
+              label="Play & Pause Videos"
+              checked={settings.allowAllPlayPause}
+              onChange={() => handleChange("allowAllPlayPause")}
+            />
 
-            <div className="flex items-center justify-between">
-              <label htmlFor="skip" className="text-white">
-                Skip Videos
-              </label>
-              <div className="relative inline-block w-12 h-6">
-                <input
-                  id="skip"
-                  type="checkbox"
-                  className="opacity-0 w-0 h-0"
-                  checked={settings.allowAllSkip}
-                  onChange={() => handleChange("allowAllSkip")}
-                />
-                <span
-                  className={`absolute cursor-pointer inset-0 rounded-full transition-colors duration-200 ${
-                    settings.allowAllSkip ? "bg-purple-600" : "bg-gray-600"
-                  }`}
-                >
-                  <span
-                    className={`absolute bg-white h-5 w-5 rounded-full top-0.5 left-0.5 transition-transform duration-200 ${
-                      settings.allowAllSkip ? "translate-x-6" : ""
-                    }`}
-                  />
-                </span>
-              </div>
-            </div>
+            <ToggleSwitch
+              id="skip"
+              label="Skip Videos"
+              checked={settings.allowAllSkip}
+              onChange={() => handleChange("allowAllSkip")}
+            />
 
-            <div className="flex items-center justify-between">
-              <label htmlFor="delete" className="text-white">
-                Delete Videos
-              </label>
-              <div className="relative inline-block w-12 h-6">
-                <input
-                  id="delete"
-                  type="checkbox"
-                  className="opacity-0 w-0 h-0"
-                  checked={settings.allowAllDelete}
-                  onChange={() => handleChange("allowAllDelete")}
-                />
-                <span
-                  className={`absolute cursor-pointer inset-0 rounded-full transition-colors duration-200 ${
-                    settings.allowAllDelete ? "bg-purple-600" : "bg-gray-600"
-                  }`}
-                >
-                  <span
-                    className={`absolute bg-white h-5 w-5 rounded-full top-0.5 left-0.5 transition-transform duration-200 ${
-                      settings.allowAllDelete ? "translate-x-6" : ""
-                    }`}
-                  />
-                </span>
-              </div>
-            </div>
+            <ToggleSwitch
+              id="delete"
+              label="Delete Videos"
+              checked={settings.allowAllDelete}
+              onChange={() => handleChange("allowAllDelete")}
+            />
 
-            <div className="flex items-center justify-between">
-              <label htmlFor="reorder" className="text-white">
-                Reorder Queue
-              </label>
-              <div className="relative inline-block w-12 h-6">
-                <input
-                  id="reorder"
-                  type="checkbox"
-                  className="opacity-0 w-0 h-0"
-                  checked={settings.allowAllQueueReorder}
-                  onChange={() => handleChange("allowAllQueueReorder")}
-                />
-                <span
-                  className={`absolute cursor-pointer inset-0 rounded-full transition-colors duration-200 ${
-                    settings.allowAllQueueReorder
-                      ? "bg-purple-600"
-                      : "bg-gray-600"
-                  }`}
-                >
-                  <span
-                    className={`absolute bg-white h-5 w-5 rounded-full top-0.5 left-0.5 transition-transform duration-200 ${
-                      settings.allowAllQueueReorder ? "translate-x-6" : ""
-                    }`}
-                  />
-                </span>
-              </div>
-            </div>
+            <ToggleSwitch
+              id="reorder"
+              label="Reorder Queue"
+              checked={settings.allowAllQueueReorder}
+              onChange={() => handleChange("allowAllQueueReorder")}
+            />
           </div>
         </div>
 
