@@ -47,6 +47,40 @@ export default defineConfig({
       devOptions: {
         enabled: true,
       },
+      workbox: {
+        // Enable background media sync and audio playback
+        navigateFallback: "index.html",
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/www\.youtube\.com\/iframe_api/,
+            handler: "CacheFirst",
+            options: {
+              cacheName: "youtube-api-cache",
+              expiration: {
+                maxEntries: 10,
+                maxAgeSeconds: 60 * 60 * 24 * 7, // 1 week
+              },
+            },
+          },
+          {
+            urlPattern: /^https:\/\/i\.ytimg\.com\//,
+            handler: "CacheFirst",
+            options: {
+              cacheName: "youtube-thumbnails-cache",
+              expiration: {
+                maxEntries: 50,
+                maxAgeSeconds: 60 * 60 * 24 * 30, // 30 days
+              },
+            },
+          },
+        ],
+        // Don't precache YouTube iframes as they're dynamic
+        globPatterns: ["**/*.{js,css,html,ico,png,svg,jpg,jpeg,gif}"],
+        globIgnores: ["**/node_modules/**"],
+        // Handle background audio playback
+        skipWaiting: true,
+        clientsClaim: true,
+      },
     }),
   ],
   optimizeDeps: {

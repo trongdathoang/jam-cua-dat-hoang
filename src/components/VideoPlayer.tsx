@@ -39,6 +39,9 @@ const VideoPlayer: React.FC = () => {
   const [playerReady, setPlayerReady] = useState(false);
   const initializedRef = useRef(false);
   const volumeControlRef = useRef<HTMLDivElement>(null);
+  const [backgroundPlaybackEnabled, setBackgroundPlaybackEnabled] =
+    useState(true);
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 
   const currentVideo = room?.currentVideo;
   const isPlaying = room?.isPlaying || false;
@@ -59,6 +62,130 @@ const VideoPlayer: React.FC = () => {
   const canPlay = isHost || roomSettings.allowAllPlayPause;
   const canSkip = isHost || roomSettings.allowAllSkip;
   const canDelete = isHost || roomSettings.allowAllDelete;
+
+  // Setup MediaSession API for background playback
+  useEffect(() => {
+    if (!currentVideo || !("mediaSession" in navigator)) return;
+
+    // Set media metadata
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: currentVideo.title || "YouTube Video",
+      artist: "YouTube Jam",
+      album: "Shared Video",
+      // If we had video thumbnails, we would set them here
+      artwork: [
+        { src: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+      ],
+    });
+
+    // Set action handlers
+    navigator.mediaSession.setActionHandler("play", () => {
+      if (canPlay) playVideo();
+    });
+
+    navigator.mediaSession.setActionHandler("pause", () => {
+      if (canPlay) pauseVideo();
+    });
+
+    navigator.mediaSession.setActionHandler("seekto", (details) => {
+      if (details.seekTime !== undefined && playerRef.current && playerReady) {
+        playerRef.current.seekTo(details.seekTime);
+        if (isHost) {
+          seekVideo(details.seekTime);
+        }
+      }
+    });
+
+    navigator.mediaSession.setActionHandler("nexttrack", () => {
+      if (canSkip && room?.queue?.length) skipVideo();
+    });
+
+    return () => {
+      // Clear action handlers when component unmounts
+      navigator.mediaSession.setActionHandler("play", null);
+      navigator.mediaSession.setActionHandler("pause", null);
+      navigator.mediaSession.setActionHandler("seekto", null);
+      navigator.mediaSession.setActionHandler("nexttrack", null);
+    };
+  }, [
+    currentVideo,
+    canPlay,
+    canSkip,
+    room?.queue?.length,
+    playVideo,
+    pauseVideo,
+    seekVideo,
+    skipVideo,
+    isHost,
+    playerReady,
+  ]);
+
+  // Update media session playback state
+  useEffect(() => {
+    if (!("mediaSession" in navigator)) return;
+
+    navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
+
+    // Update media position state if player is ready
+    if (playerRef.current && playerReady) {
+      try {
+        const duration = playerRef.current.getDuration();
+        navigator.mediaSession.setPositionState({
+          duration: duration || 0,
+          playbackRate: 1,
+          position: localTime,
+        });
+      } catch (error) {
+        console.error("Error updating media position state:", error);
+      }
+    }
+  }, [isPlaying, localTime, playerReady]);
+
+  // WakeLock API for keeping screen on
+  useEffect(() => {
+    const requestWakeLock = async () => {
+      if ("wakeLock" in navigator && isPlaying && backgroundPlaybackEnabled) {
+        try {
+          wakeLockRef.current = await navigator.wakeLock.request("screen");
+          console.log("Wake Lock is active");
+
+          wakeLockRef.current.addEventListener("release", () => {
+            console.log("Wake Lock was released");
+          });
+        } catch (err) {
+          console.error(`Failed to get wake lock: ${err}`);
+        }
+      }
+    };
+
+    const releaseWakeLock = () => {
+      if (wakeLockRef.current) {
+        wakeLockRef.current.release().then(() => {
+          wakeLockRef.current = null;
+        });
+      }
+    };
+
+    if (isPlaying) {
+      requestWakeLock();
+    } else {
+      releaseWakeLock();
+    }
+
+    // Handle visibility change
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible" && isPlaying) {
+        requestWakeLock();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      releaseWakeLock();
+    };
+  }, [isPlaying, backgroundPlaybackEnabled]);
 
   // Close volume slider when clicking outside
   useEffect(() => {
@@ -193,6 +320,16 @@ const VideoPlayer: React.FC = () => {
       try {
         const currentPlayerTime = playerRef.current.getCurrentTime();
         setLocalTime(currentPlayerTime);
+
+        // Update media position state
+        if ("mediaSession" in navigator) {
+          const duration = playerRef.current.getDuration();
+          navigator.mediaSession.setPositionState({
+            duration: duration || 0,
+            playbackRate: 1,
+            position: currentPlayerTime,
+          });
+        }
       } catch (error) {
         console.error("Error updating local time:", error);
       }
@@ -289,6 +426,10 @@ const VideoPlayer: React.FC = () => {
       }
       setIsMuted(!isMuted);
     }
+  };
+
+  const toggleBackgroundPlayback = () => {
+    setBackgroundPlaybackEnabled(!backgroundPlaybackEnabled);
   };
 
   const formatTime = (seconds: number): string => {
@@ -455,6 +596,34 @@ const VideoPlayer: React.FC = () => {
               </div>
             )}
           </div>
+
+          <button
+            onClick={toggleBackgroundPlayback}
+            className={`p-2 text-white mx-2 hover:bg-gray-800 rounded-full transition-colors ${
+              backgroundPlaybackEnabled ? "bg-purple-600" : ""
+            }`}
+            title={
+              backgroundPlaybackEnabled
+                ? "Disable background playback"
+                : "Enable background playback"
+            }
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
+              <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3z"></path>
+              <path d="M3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
+            </svg>
+          </button>
 
           {isHost && (
             <button
