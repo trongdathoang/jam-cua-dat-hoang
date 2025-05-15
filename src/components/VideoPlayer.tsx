@@ -66,6 +66,11 @@ const VideoPlayer: React.FC = () => {
 
   const roomSettings = room?.settings || defaultSettings;
 
+  // Computed permissions based on real-time role and settings
+  const canPlay = isHost || roomSettings.allowAllPlayPause;
+  const canSkip = isHost || roomSettings.allowAllSkip;
+  const canDelete = isHost || roomSettings.allowAllDelete;
+
   // Check if service worker is available and not failed previously
   useEffect(() => {
     const swFailed = localStorage.getItem("sw-failed") === "true";
@@ -571,9 +576,9 @@ const VideoPlayer: React.FC = () => {
           <button
             onClick={isPlaying ? pauseVideo : playVideo}
             className="p-2 text-white mr-2 hover:bg-gray-800 rounded-full transition-colors"
-            disabled={!isHost && !roomSettings.allowAllPlayPause}
+            disabled={!canPlay}
             title={
-              isHost || roomSettings.allowAllPlayPause
+              canPlay
                 ? isPlaying
                   ? "Pause"
                   : "Play"
@@ -586,14 +591,8 @@ const VideoPlayer: React.FC = () => {
           <button
             onClick={skipVideo}
             className="p-2 text-white mr-2 hover:bg-gray-800 rounded-full transition-colors"
-            disabled={
-              (!isHost && !roomSettings.allowAllSkip) || !room?.queue?.length
-            }
-            title={
-              isHost || roomSettings.allowAllSkip
-                ? "Skip to next video"
-                : "Only host can skip"
-            }
+            disabled={!canSkip || !room?.queue?.length}
+            title={canSkip ? "Skip to next video" : "Only host can skip"}
           >
             <SkipForward size={20} />
           </button>
@@ -601,9 +600,9 @@ const VideoPlayer: React.FC = () => {
           <button
             onClick={skipCurrentVideo}
             className="p-2 text-white mr-4 hover:bg-gray-800 rounded-full transition-colors"
-            disabled={!isHost && !roomSettings.allowAllDelete}
+            disabled={!canDelete}
             title={
-              isHost || roomSettings.allowAllDelete
+              canDelete
                 ? "Remove current video without playing next"
                 : "Only host can remove videos"
             }

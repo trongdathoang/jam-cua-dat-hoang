@@ -23,7 +23,9 @@ import { CSS } from "@dnd-kit/utilities";
 interface SortableQueueItemProps {
   video: VideoInfo;
   index: number;
-  isHost: boolean;
+  canReorder: boolean;
+  canDelete: boolean;
+  canPlayFromQueue: boolean;
   userName: string | undefined;
   onPlay: (id: string) => void;
   onRemove: (id: string) => void;
@@ -32,7 +34,9 @@ interface SortableQueueItemProps {
 const SortableQueueItem: React.FC<SortableQueueItemProps> = ({
   video,
   index,
-  isHost,
+  canReorder,
+  canDelete,
+  canPlayFromQueue,
   userName,
   onPlay,
   onRemove,
@@ -62,7 +66,7 @@ const SortableQueueItem: React.FC<SortableQueueItemProps> = ({
       }`}
     >
       <div className="flex items-start p-2">
-        {isHost && (
+        {canReorder && (
           <div
             {...attributes}
             {...listeners}
@@ -90,7 +94,7 @@ const SortableQueueItem: React.FC<SortableQueueItemProps> = ({
               Added by {userName || "Unknown"}
             </span>
             <div className="flex space-x-2">
-              {isHost && (
+              {canPlayFromQueue && (
                 <button
                   onClick={() => onPlay(video.id)}
                   className="text-gray-400 hover:text-green-400 transition-colors"
@@ -99,7 +103,8 @@ const SortableQueueItem: React.FC<SortableQueueItemProps> = ({
                   <Play size={16} />
                 </button>
               )}
-              {isHost && (
+              {(canDelete ||
+                video.addedBy === useRoomStore.getState().user?.id) && (
                 <button
                   onClick={() => onRemove(video.id)}
                   className="text-gray-400 hover:text-red-400 transition-colors"
@@ -122,6 +127,19 @@ const VideoQueue: React.FC = () => {
   const queue = room?.queue || [];
   const isHost = user?.isHost || false;
 
+  // Use room settings for permissions
+  const roomSettings = room?.settings || {
+    allowAllPlayPause: false,
+    allowAllSkip: false,
+    allowAllDelete: false,
+    allowAllQueueReorder: false,
+  };
+
+  // Calculate permissions based on host status and room settings
+  const canReorder = isHost || roomSettings.allowAllQueueReorder;
+  const canDelete = isHost || roomSettings.allowAllDelete;
+  const canPlayFromQueue = isHost; // Only host can play from queue
+
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { delay: 100, tolerance: 5 },
@@ -136,7 +154,7 @@ const VideoQueue: React.FC = () => {
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
 
-    if (!isHost || !over) return;
+    if (!canReorder || !over) return;
 
     if (active.id !== over.id) {
       const oldIndex = queue.findIndex((item) => item.id === active.id);
@@ -162,6 +180,7 @@ const VideoQueue: React.FC = () => {
           sensors={sensors}
           collisionDetection={closestCenter}
           onDragEnd={handleDragEnd}
+          // Only enable drag if the user has permission to reorder
         >
           <SortableContext
             items={queue.map((item) => item.id)}
@@ -173,7 +192,9 @@ const VideoQueue: React.FC = () => {
                   key={video.id}
                   video={video}
                   index={index}
-                  isHost={isHost}
+                  canReorder={canReorder}
+                  canDelete={canDelete}
+                  canPlayFromQueue={canPlayFromQueue}
                   userName={
                     Object.values(room.users).find(
                       (u) => u.id === video.addedBy

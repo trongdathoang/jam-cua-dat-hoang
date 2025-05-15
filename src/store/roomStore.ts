@@ -596,7 +596,22 @@ const useRoomStore = create<RoomState>((set, get) => ({
     onValue(roomRef, (snapshot) => {
       if (snapshot.exists()) {
         const roomData = snapshot.val() as Room;
-        set({ room: roomData });
+        // Update room state
+        set((state) => {
+          // Check if the current user's host status has changed
+          if (state.user && roomData.users[state.user.id]) {
+            const updatedUser = roomData.users[state.user.id];
+            // Update the user in state if their host status changed
+            if (state.user.isHost !== updatedUser.isHost) {
+              return {
+                room: roomData,
+                user: updatedUser,
+              };
+            }
+          }
+
+          return { room: roomData };
+        });
       } else {
         // Room was deleted
         set({
@@ -604,6 +619,25 @@ const useRoomStore = create<RoomState>((set, get) => ({
           user: null,
           messages: [],
           error: "Room no longer exists",
+        });
+      }
+    });
+
+    // Listen for specific user changes
+    const userRef = ref(database, `rooms/${roomId}/users/${userId}`);
+    onValue(userRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const userData = snapshot.val() as User;
+        // Only update the user state if it has changed
+        set((state) => {
+          if (
+            state.user &&
+            (state.user.isHost !== userData.isHost ||
+              state.user.name !== userData.name)
+          ) {
+            return { user: userData };
+          }
+          return state;
         });
       }
     });
@@ -648,12 +682,15 @@ const useRoomStore = create<RoomState>((set, get) => ({
   },
 
   cleanupRoomListeners: () => {
-    const { room } = get();
+    const { room, user } = get();
     if (!room) return;
 
     // Remove all listeners
     off(ref(database, `rooms/${room.id}`));
     off(ref(database, `messages/${room.id}`));
+    if (user) {
+      off(ref(database, `rooms/${room.id}/users/${user.id}`));
+    }
     off(ref(database, ".info/connected"));
   },
 
