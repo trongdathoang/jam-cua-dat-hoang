@@ -70,7 +70,7 @@ const VideoPlayer: React.FC = () => {
     // Set media metadata
     navigator.mediaSession.metadata = new MediaMetadata({
       title: currentVideo.title || "YouTube Video",
-      artist: "YouTube Jam",
+      artist: "JamcuaDatdepzai",
       album: "Shared Video",
       // If we had video thumbnails, we would set them here
       artwork: [

@@ -10,7 +10,7 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["favicon.ico", "apple-touch-icon.png", "masked-icon.svg"],
       manifest: {
-        name: "YouTube Jam",
+        name: "JamcuaDatdepzai",
         short_name: "YT Jam",
         description: "Collaborative YouTube video watching app",
         display: "standalone",
