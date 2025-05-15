@@ -141,41 +141,84 @@ const VideoPlayer: React.FC = () => {
     }
   }, [isPlaying, localTime, playerReady]);
 
-  // WakeLock API for keeping screen on
+  // Enhanced background audio playback when screen is off
   useEffect(() => {
-    const requestWakeLock = async () => {
-      if ("wakeLock" in navigator && isPlaying && backgroundPlaybackEnabled) {
-        try {
-          wakeLockRef.current = await navigator.wakeLock.request("screen");
-          console.log("Wake Lock is active");
+    // Create an invisible audio element to keep the process alive
+    let silentAudio: HTMLAudioElement | null = null;
 
-          wakeLockRef.current.addEventListener("release", () => {
-            console.log("Wake Lock was released");
-          });
-        } catch (err) {
-          console.error(`Failed to get wake lock: ${err}`);
+    const enableBackgroundAudio = () => {
+      if (isPlaying && backgroundPlaybackEnabled) {
+        // Request WakeLock if available
+        if ("wakeLock" in navigator) {
+          try {
+            navigator.wakeLock.request("screen").then((wakeLock) => {
+              wakeLockRef.current = wakeLock;
+              console.log("Wake Lock is active");
+
+              wakeLockRef.current.addEventListener("release", () => {
+                console.log("Wake Lock was released");
+              });
+            });
+          } catch (err) {
+            console.error(`Failed to get wake lock: ${err}`);
+          }
+        }
+
+        // Create silent audio to keep audio context alive
+        if (!silentAudio) {
+          silentAudio = new Audio();
+          silentAudio.src =
+            "data:audio/mp3;base64,//uQxAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAABAAACCAD///////////////////////////////////////////8=";
+          silentAudio.loop = true;
+          silentAudio.volume = 0.001; // Nearly silent
+
+          // Play silent audio when page becomes hidden
+          if (document.visibilityState === "hidden") {
+            silentAudio
+              .play()
+              .catch((e) => console.log("Silent audio error:", e));
+          }
         }
       }
     };
 
-    const releaseWakeLock = () => {
+    const disableBackgroundAudio = () => {
+      // Release wake lock
       if (wakeLockRef.current) {
         wakeLockRef.current.release().then(() => {
           wakeLockRef.current = null;
         });
       }
+
+      // Stop silent audio
+      if (silentAudio) {
+        silentAudio.pause();
+        silentAudio = null;
+      }
     };
 
-    if (isPlaying) {
-      requestWakeLock();
+    if (isPlaying && backgroundPlaybackEnabled) {
+      enableBackgroundAudio();
     } else {
-      releaseWakeLock();
+      disableBackgroundAudio();
     }
 
     // Handle visibility change
     const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible" && isPlaying) {
-        requestWakeLock();
+      if (
+        document.visibilityState === "hidden" &&
+        isPlaying &&
+        backgroundPlaybackEnabled
+      ) {
+        // When tab becomes hidden but playback should continue
+        enableBackgroundAudio();
+        if (silentAudio)
+          silentAudio
+            .play()
+            .catch((e) => console.log("Silent audio error:", e));
+      } else if (document.visibilityState === "visible") {
+        // When returning to the tab
+        if (silentAudio) silentAudio.pause();
       }
     };
 
@@ -183,7 +226,7 @@ const VideoPlayer: React.FC = () => {
 
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      releaseWakeLock();
+      disableBackgroundAudio();
     };
   }, [isPlaying, backgroundPlaybackEnabled]);
 
