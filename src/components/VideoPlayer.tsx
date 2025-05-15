@@ -648,7 +648,7 @@ const VideoPlayer: React.FC = () => {
             </button>
 
             {showVolumeSlider && (
-              <div className="absolute bottom-full mb-2 bg-gray-800 p-3 rounded-lg w-48 shadow-lg">
+              <div className="absolute bottom-full mb-2 bg-gray-800 p-3 rounded-lg w-48 shadow-lg z-50">
                 <div className="flex items-center pb-2">
                   <button
                     onClick={toggleMute}
