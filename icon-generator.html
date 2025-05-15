@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PWA Icon Generator</title>
+    <style>
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        padding: 20px;
+        background: #f5f5f5;
+      }
+      .container {
+        max-width: 800px;
+        margin: 0 auto;
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      }
+      h1 {
+        text-align: center;
+        margin-bottom: 30px;
+      }
+      .icons-container {
+        display: flex;
+        flex-direction: column;
+        gap: 30px;
+        align-items: center;
+      }
+      .icon-wrapper {
+        text-align: center;
+      }
+      canvas {
+        border: 1px solid #ddd;
+        margin-bottom: 10px;
+        background-color: white;
+      }
+      button {
+        padding: 10px 15px;
+        background: #4a56e2;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        margin: 5px;
+      }
+      button:hover {
+        background: #3a46c2;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>PWA Icon Generator</h1>
+      <div class="icons-container">
+        <div class="icon-wrapper">
+          <h2>192x192 Icon</h2>
+          <canvas id="canvas192" width="192" height="192"></canvas>
+          <div>
+            <button onclick="downloadIcon(192)">Download PNG</button>
+          </div>
+        </div>
+        <div class="icon-wrapper">
+          <h2>512x512 Icon</h2>
+          <canvas id="canvas512" width="512" height="512"></canvas>
+          <div>
+            <button onclick="downloadIcon(512)">Download PNG</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Load the SVG file and render it to canvas
+      function loadSVG() {
+        const svgURL = "public/icon.svg";
+
+        // Create Image objects
+        const img192 = new Image();
+        const img512 = new Image();
+
+        // Set the source
+        img192.src = svgURL;
+        img512.src = svgURL;
+
+        // When the 192x192 image loads, render it to canvas
+        img192.onload = function () {
+          const canvas = document.getElementById("canvas192");
+          const ctx = canvas.getContext("2d");
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img192, 0, 0, 192, 192);
+        };
+
+        // When the 512x512 image loads, render it to canvas
+        img512.onload = function () {
+          const canvas = document.getElementById("canvas512");
+          const ctx = canvas.getContext("2d");
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img512, 0, 0, 512, 512);
+        };
+      }
+
+      // Function to download canvas as PNG
+      function downloadIcon(size) {
+        const canvas = document.getElementById(`canvas${size}`);
+        const link = document.createElement("a");
+        link.download = `pwa-${size}x${size}.png`;
+        link.href = canvas.toDataURL("image/png");
+        link.click();
+      }
+
+      // Load the SVG when the page loads
+      window.onload = loadSVG;
+    </script>
+  </body>
+</html>
