@@ -44,7 +44,7 @@ const WelcomeModal: React.FC<WelcomeModalProps> = ({ roomId }) => {
         </div>
 
         <h2 className="text-2xl font-bold text-center text-white mb-6">
-          YoutubeJam
+          JamcuaDatdepzai
         </h2>
 
         {!roomId && (

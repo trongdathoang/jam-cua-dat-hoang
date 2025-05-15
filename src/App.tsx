@@ -38,9 +38,9 @@ function App() {
   // Update page title when room changes
   useEffect(() => {
     if (room) {
-      document.title = `${room.name} | YoutubeJam`;
+      document.title = `${room.name} | JamcuaDatdepzai`;
     } else {
-      document.title = "YoutubeJam";
+      document.title = "JamcuaDatdepzai";
     }
   }, [room]);
 
@@ -83,7 +83,7 @@ function App() {
         <div className="container mx-auto px-4 flex items-center justify-between">
           <div className="flex items-center">
             <Film className="text-purple-500 mr-2" size={24} />
-            <h1 className="text-xl font-bold">YoutubeJam</h1>
+            <h1 className="text-xl font-bold">JamcuaDatdepzai</h1>
           </div>
           <button
             onClick={() => leaveRoom()}

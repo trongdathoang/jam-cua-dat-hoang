@@ -1,6 +1,6 @@
-# YoutubeJam
+# JamcuaDatdepzai
 
-YoutubeJam is a real-time YouTube video sharing platform that lets you watch videos together with friends and family, no matter where they are. Create rooms, chat with participants, and enjoy synchronized video playback.
+JamcuaDatdepzai is a real-time YouTube video sharing platform that lets you watch videos together with friends and family, no matter where they are. Create rooms, chat with participants, and enjoy synchronized video playback.
 
 ## Features
 
