@@ -11,7 +11,22 @@ import {
   off,
 } from "firebase/database";
 import { database } from "../firebase/config";
-import { RoomState, Room, User, Message, VideoInfo } from "../types";
+import {
+  RoomState,
+  Room,
+  User,
+  Message,
+  VideoInfo,
+  RoomSettings,
+} from "../types";
+
+// Default room settings
+const DEFAULT_ROOM_SETTINGS: RoomSettings = {
+  allowAllPlayPause: false,
+  allowAllSkip: false,
+  allowAllDelete: false,
+  allowAllQueueReorder: false,
+};
 
 const useRoomStore = create<RoomState>((set, get) => ({
   room: null,
@@ -45,6 +60,7 @@ const useRoomStore = create<RoomState>((set, get) => ({
             joinedAt: timestamp,
           },
         },
+        settings: DEFAULT_ROOM_SETTINGS,
       };
 
       await dbSet(ref(database, `rooms/${roomId}`), newRoom);
@@ -291,17 +307,14 @@ const useRoomStore = create<RoomState>((set, get) => ({
     const { room, user } = get();
     if (!room || !user) return;
 
-    try {
-      // Only allow removing videos if:
-      // 1. The user is the host, or
-      // 2. The user added the video themselves
+    const canDelete = get().canUserDelete();
+    const isVideoOwner = (video: VideoInfo) => video.addedBy === user.id;
 
+    try {
       if (room.currentVideo && room.currentVideo.id === videoId) {
-        // For current video: Only host can remove, or user who added it
-        if (!user.isHost && room.currentVideo.addedBy !== user.id) {
-          console.error(
-            "Only the host or the user who added this video can remove it"
-          );
+        // For current video: Check permissions
+        if (!canDelete && !isVideoOwner(room.currentVideo)) {
+          console.error("You don't have permission to remove this video");
           return;
         }
 
@@ -321,14 +334,11 @@ const useRoomStore = create<RoomState>((set, get) => ({
         // For queue: Find the video in the queue
         const videoInQueue = room.queue.find((v) => v.id === videoId);
 
-        // Only allow removing if user is host or added the video themselves
-        if (
-          !videoInQueue ||
-          (!user.isHost && videoInQueue.addedBy !== user.id)
-        ) {
-          console.error(
-            "Only the host or the user who added this video can remove it"
-          );
+        if (!videoInQueue) return;
+
+        // Check permissions
+        if (!canDelete && !isVideoOwner(videoInQueue)) {
+          console.error("You don't have permission to remove this video");
           return;
         }
 
@@ -342,8 +352,11 @@ const useRoomStore = create<RoomState>((set, get) => ({
   },
 
   playVideo: async () => {
-    const { room, user } = get();
-    if (!room || !room.currentVideo || !user || !user.isHost) return;
+    const { room } = get();
+    if (!room || !room.currentVideo) return;
+
+    const canPlay = get().canUserPlayPause();
+    if (!canPlay) return;
 
     try {
       await update(ref(database, `rooms/${room.id}`), {
@@ -356,8 +369,11 @@ const useRoomStore = create<RoomState>((set, get) => ({
   },
 
   pauseVideo: async () => {
-    const { room, user } = get();
-    if (!room || !room.currentVideo || !user || !user.isHost) return;
+    const { room } = get();
+    if (!room || !room.currentVideo) return;
+
+    const canPause = get().canUserPlayPause();
+    if (!canPause) return;
 
     try {
       await update(ref(database, `rooms/${room.id}`), {
@@ -384,8 +400,11 @@ const useRoomStore = create<RoomState>((set, get) => ({
   },
 
   skipVideo: async () => {
-    const { room, user } = get();
-    if (!room || !user || !user.isHost) return;
+    const { room } = get();
+    if (!room) return;
+
+    const canSkip = get().canUserSkip();
+    if (!canSkip) return;
 
     try {
       const timestamp = Date.now();
@@ -416,8 +435,11 @@ const useRoomStore = create<RoomState>((set, get) => ({
   },
 
   skipCurrentVideo: async () => {
-    const { room, user } = get();
-    if (!room || !room.currentVideo || !user || !user.isHost) return;
+    const { room } = get();
+    if (!room || !room.currentVideo) return;
+
+    const canDelete = get().canUserDelete();
+    if (!canDelete) return;
 
     try {
       const timestamp = Date.now();
@@ -464,8 +486,11 @@ const useRoomStore = create<RoomState>((set, get) => ({
   },
 
   reorderQueue: async (newQueue: VideoInfo[]) => {
-    const { room, user } = get();
-    if (!room || !user || !user.isHost) return;
+    const { room } = get();
+    if (!room) return;
+
+    const canReorder = get().canUserReorderQueue();
+    if (!canReorder) return;
 
     try {
       const timestamp = Date.now();
@@ -630,6 +655,66 @@ const useRoomStore = create<RoomState>((set, get) => ({
     off(ref(database, `rooms/${room.id}`));
     off(ref(database, `messages/${room.id}`));
     off(ref(database, ".info/connected"));
+  },
+
+  // Add room settings functionality
+  updateRoomSettings: async (settings: RoomSettings) => {
+    const { room, user } = get();
+    if (!room || !user || !user.isHost) return;
+
+    try {
+      await update(ref(database, `rooms/${room.id}`), {
+        settings,
+        lastUpdated: Date.now(),
+      });
+    } catch (error) {
+      console.error("Error updating room settings:", error);
+    }
+  },
+
+  // Permission helper functions
+  canUserPlayPause: () => {
+    const { room, user } = get();
+    if (!room || !user) return false;
+
+    // Host can always control playback
+    if (user.isHost) return true;
+
+    // Check room settings
+    return !!room.settings?.allowAllPlayPause;
+  },
+
+  canUserSkip: () => {
+    const { room, user } = get();
+    if (!room || !user) return false;
+
+    // Host can always skip
+    if (user.isHost) return true;
+
+    // Check room settings
+    return !!room.settings?.allowAllSkip;
+  },
+
+  canUserDelete: () => {
+    const { room, user } = get();
+    if (!room || !user) return false;
+
+    // Host can always delete
+    if (user.isHost) return true;
+
+    // Check room settings
+    return !!room.settings?.allowAllDelete;
+  },
+
+  canUserReorderQueue: () => {
+    const { room, user } = get();
+    if (!room || !user) return false;
+
+    // Host can always reorder
+    if (user.isHost) return true;
+
+    // Check room settings
+    return !!room.settings?.allowAllQueueReorder;
   },
 }));
 

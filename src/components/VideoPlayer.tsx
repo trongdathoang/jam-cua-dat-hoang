@@ -8,6 +8,7 @@ import {
   VolumeX,
   Trash2,
   Headphones,
+  Settings,
 } from "lucide-react";
 import useRoomStore from "../store/roomStore";
 import {
@@ -16,6 +17,7 @@ import {
   pauseBackgroundAudio,
   setupServiceWorkerListeners,
 } from "../firebase/serviceWorker";
+import RoomSettingsModal, { RoomSettings } from "./RoomSettingsModal";
 
 const VideoPlayer: React.FC = () => {
   const {
@@ -26,8 +28,12 @@ const VideoPlayer: React.FC = () => {
     seekVideo,
     skipVideo,
     skipCurrentVideo,
+    updateRoomSettings,
   } = useRoomStore();
   const [isMuted, setIsMuted] = useState(false);
+  const [volume, setVolume] = useState(100);
+  const [showVolumeSlider, setShowVolumeSlider] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const playerRef = useRef<any | null>(null);
   const [localTime, setLocalTime] = useState(0);
@@ -43,11 +49,22 @@ const VideoPlayer: React.FC = () => {
   const [playerReady, setPlayerReady] = useState(false);
   const initializedRef = useRef(false);
   const swRegistrationAttemptedRef = useRef(false);
+  const volumeControlRef = useRef<HTMLDivElement>(null);
 
   const currentVideo = room?.currentVideo;
   const isPlaying = room?.isPlaying || false;
   const currentTime = room?.currentTime || 0;
   const isHost = user?.isHost || false;
+
+  // Default settings if none exist in the room
+  const defaultSettings: RoomSettings = {
+    allowAllPlayPause: false,
+    allowAllSkip: false,
+    allowAllDelete: false,
+    allowAllQueueReorder: false,
+  };
+
+  const roomSettings = room?.settings || defaultSettings;
 
   // Check if service worker is available and not failed previously
   useEffect(() => {
@@ -58,6 +75,23 @@ const VideoPlayer: React.FC = () => {
     } else {
       setServiceWorkerAvailable("serviceWorker" in navigator);
     }
+  }, []);
+
+  // Close volume slider when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        volumeControlRef.current &&
+        !volumeControlRef.current.contains(event.target as Node)
+      ) {
+        setShowVolumeSlider(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
   }, []);
 
   // Register service worker on component mount, but only if not attempted before
@@ -257,6 +291,13 @@ const VideoPlayer: React.FC = () => {
     setPlayerReady(true);
     console.log("YouTube player ready");
 
+    // Initialize volume from player
+    if (playerRef.current) {
+      const playerVolume = playerRef.current.getVolume();
+      setVolume(playerVolume);
+      setIsMuted(playerRef.current.isMuted());
+    }
+
     // Set up more frequent sync interval for hosts
     if (syncIntervalRef.current) {
       window.clearInterval(syncIntervalRef.current);
@@ -372,6 +413,31 @@ const VideoPlayer: React.FC = () => {
     handleSeekCommit();
   };
 
+  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newVolume = parseInt(e.target.value, 10);
+    setVolume(newVolume);
+
+    if (playerRef.current && playerReady && !isBackgroundMode) {
+      playerRef.current.setVolume(newVolume);
+
+      // Automatically unmute if volume is changed to non-zero
+      if (newVolume > 0 && isMuted) {
+        playerRef.current.unMute();
+        setIsMuted(false);
+      }
+
+      // Automatically mute if volume is set to 0
+      if (newVolume === 0 && !isMuted) {
+        playerRef.current.mute();
+        setIsMuted(true);
+      }
+    }
+  };
+
+  const toggleVolumeSlider = () => {
+    setShowVolumeSlider(!showVolumeSlider);
+  };
+
   const toggleMute = () => {
     if (isBackgroundMode || !playerReady) {
       // In background mode, we can't control mute directly
@@ -424,6 +490,10 @@ const VideoPlayer: React.FC = () => {
     return playerRef.current && playerReady && !isBackgroundMode
       ? playerRef.current.getDuration()
       : 0;
+  };
+
+  const handleSaveSettings = (settings: RoomSettings) => {
+    updateRoomSettings(settings);
   };
 
   if (!currentVideo) {
@@ -501,9 +571,9 @@ const VideoPlayer: React.FC = () => {
           <button
             onClick={isPlaying ? pauseVideo : playVideo}
             className="p-2 text-white mr-2 hover:bg-gray-800 rounded-full transition-colors"
-            disabled={!isHost}
+            disabled={!isHost && !roomSettings.allowAllPlayPause}
             title={
-              isHost
+              isHost || roomSettings.allowAllPlayPause
                 ? isPlaying
                   ? "Pause"
                   : "Play"
@@ -516,8 +586,14 @@ const VideoPlayer: React.FC = () => {
           <button
             onClick={skipVideo}
             className="p-2 text-white mr-2 hover:bg-gray-800 rounded-full transition-colors"
-            disabled={!isHost || !room?.queue?.length}
-            title={isHost ? "Skip to next video" : "Only host can skip"}
+            disabled={
+              (!isHost && !roomSettings.allowAllSkip) || !room?.queue?.length
+            }
+            title={
+              isHost || roomSettings.allowAllSkip
+                ? "Skip to next video"
+                : "Only host can skip"
+            }
           >
             <SkipForward size={20} />
           </button>
@@ -525,9 +601,9 @@ const VideoPlayer: React.FC = () => {
           <button
             onClick={skipCurrentVideo}
             className="p-2 text-white mr-4 hover:bg-gray-800 rounded-full transition-colors"
-            disabled={!isHost}
+            disabled={!isHost && !roomSettings.allowAllDelete}
             title={
-              isHost
+              isHost || roomSettings.allowAllDelete
                 ? "Remove current video without playing next"
                 : "Only host can remove videos"
             }
@@ -557,24 +633,73 @@ const VideoPlayer: React.FC = () => {
             </span>
           </div>
 
-          <button
-            onClick={toggleMute}
-            className="p-2 text-white mx-2 hover:bg-gray-800 rounded-full transition-colors"
-            disabled={isBackgroundMode}
-          >
-            {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
-          </button>
+          <div ref={volumeControlRef} className="relative mx-2">
+            <button
+              onClick={toggleVolumeSlider}
+              className="p-2 text-white hover:bg-gray-800 rounded-full transition-colors flex items-center"
+              disabled={isBackgroundMode}
+              title="Volume"
+            >
+              {isMuted || volume === 0 ? (
+                <VolumeX size={20} />
+              ) : (
+                <Volume2 size={20} />
+              )}
+              <span className="ml-1 text-xs text-gray-400">{volume}</span>
+            </button>
+
+            {showVolumeSlider && (
+              <div className="absolute bottom-full mb-2 bg-gray-800 p-3 rounded-lg w-48 shadow-lg">
+                <div className="flex items-center pb-2">
+                  <button
+                    onClick={toggleMute}
+                    className="p-1 text-white hover:bg-gray-700 rounded transition-colors"
+                    disabled={isBackgroundMode}
+                  >
+                    {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+                  </button>
+                  <span className="mx-2 text-white text-sm">
+                    {isMuted ? "Unmute" : "Mute"}
+                  </span>
+                </div>
+
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={volume}
+                  onChange={handleVolumeChange}
+                  className="w-full slider-progress h-1.5 appearance-none bg-gray-700 rounded-full cursor-pointer"
+                  disabled={isBackgroundMode}
+                />
+                <div className="flex justify-between mt-1">
+                  <span className="text-xs text-gray-400">0</span>
+                  <span className="text-xs text-gray-400">100</span>
+                </div>
+              </div>
+            )}
+          </div>
 
           {serviceWorkerRegistered && serviceWorkerAvailable && (
             <button
               onClick={toggleBackgroundMode}
-              className="p-2 text-white ml-2 hover:bg-gray-800 rounded-full transition-colors"
+              className="p-2 text-white mx-2 hover:bg-gray-800 rounded-full transition-colors"
               title="Toggle background audio mode"
             >
               <Headphones
                 size={20}
                 className={isBackgroundMode ? "text-purple-500" : ""}
               />
+            </button>
+          )}
+
+          {isHost && (
+            <button
+              onClick={() => setShowSettingsModal(true)}
+              className="p-2 text-white hover:bg-gray-800 rounded-full transition-colors"
+              title="Room Settings"
+            >
+              <Settings size={20} />
             </button>
           )}
         </div>
@@ -585,6 +710,16 @@ const VideoPlayer: React.FC = () => {
           </h3>
         </div>
       </div>
+
+      {/* Settings Modal */}
+      {isHost && (
+        <RoomSettingsModal
+          isOpen={showSettingsModal}
+          onClose={() => setShowSettingsModal(false)}
+          initialSettings={roomSettings}
+          onSave={handleSaveSettings}
+        />
+      )}
     </div>
   );
 };

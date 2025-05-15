@@ -13,6 +13,13 @@ export interface VideoInfo {
   addedAt: number;
 }
 
+export interface RoomSettings {
+  allowAllPlayPause: boolean;
+  allowAllSkip: boolean;
+  allowAllDelete: boolean;
+  allowAllQueueReorder: boolean;
+}
+
 export interface Room {
   id: string;
   name: string;
@@ -24,6 +31,7 @@ export interface Room {
   currentTime: number;
   lastUpdated: number;
   users: Record<string, User>;
+  settings?: RoomSettings;
 }
 
 export interface Message {
@@ -65,4 +73,9 @@ export interface RoomState {
   reorderQueue: (newQueue: VideoInfo[]) => Promise<void>;
   removeUser: (userId: string) => Promise<void>;
   transferHost: (userId: string) => Promise<void>;
+  updateRoomSettings: (settings: RoomSettings) => Promise<void>;
+  canUserPlayPause: () => boolean;
+  canUserSkip: () => boolean;
+  canUserDelete: () => boolean;
+  canUserReorderQueue: () => boolean;
 }
